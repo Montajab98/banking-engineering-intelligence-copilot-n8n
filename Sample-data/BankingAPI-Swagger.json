@@ -1,0 +1,499 @@
+{
+  "openapi": "3.0.3",
+  "info": {
+    "title": "Emirates Continental Bank - Fund Transfer API (MOCK)",
+    "version": "3.2.0",
+    "description": "MOCK / TRAINING SPECIFICATION. This API is fictitious and contains no production banking data. It implements the business rules defined in FundTransferRequirements.pdf (FTR-BRD-v3.2). Each operation and error response is annotated with the business rule identifier (BR-xxx) it enforces.\n\nAuthentication: OAuth 2.0 client credentials plus a customer-scoped bearer token issued by the digital channel gateway.\n\nRate limiting: 60 requests per minute per customer. Exceeding the limit returns HTTP 429.",
+    "contact": {
+      "name": "Payments Platform Team (training sample)",
+      "email": "payments-platform@example-bank.test"
+    },
+    "license": {
+      "name": "Internal - Training Use Only"
+    }
+  },
+  "servers": [
+    {
+      "url": "https://api.sandbox.example-bank.test/banking",
+      "description": "Sandbox - mock data only"
+    },
+    {
+      "url": "https://api.uat.example-bank.test/banking",
+      "description": "UAT"
+    }
+  ],
+  "tags": [
+    { "name": "Transfers", "description": "Create, confirm, and query fund transfers" },
+    { "name": "Accounts", "description": "Account balance and status enquiries" },
+    { "name": "Beneficiaries", "description": "Registered payee management" },
+    { "name": "Limits", "description": "Customer limit utilisation" }
+  ],
+  "paths": {
+    "/v1/transfers": {
+      "post": {
+        "tags": ["Transfers"],
+        "summary": "Create a fund transfer instruction",
+        "description": "Validates and posts an outbound fund transfer. Enforces BR-001 through BR-015. If the amount is above AED 25,000 (BR-005) the transfer is created in status AWAITING_OTP and must be confirmed through /v1/transfers/{transferId}/otp/verify before it is posted. If the amount is AED 20,000 or above, or the transfer is international, sanction screening is invoked (BR-014) and the transfer may be returned in status PENDING_COMPLIANCE.",
+        "operationId": "createTransfer",
+        "parameters": [
+          {
+            "name": "X-Idempotency-Key",
+            "in": "header",
+            "required": true,
+            "description": "Unique key supplied by the client. Replaying the same key within 24 hours returns the original result (BR-011).",
+            "schema": { "type": "string", "format": "uuid" },
+            "example": "8f14e45f-ea6b-4f2e-9a1d-3c7b0d2e5a41"
+          },
+          {
+            "name": "X-Channel",
+            "in": "header",
+            "required": true,
+            "schema": { "type": "string", "enum": ["MOBILE", "WEB", "IVR"] },
+            "example": "MOBILE"
+          },
+          {
+            "name": "X-Device-Fingerprint",
+            "in": "header",
+            "required": false,
+            "description": "Recorded in the audit trail (BR-015).",
+            "schema": { "type": "string" },
+            "example": "d41d8cd98f00b204e9800998ecf8427e"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": { "$ref": "#/components/schemas/TransferRequest" },
+              "examples": {
+                "domesticSmall": {
+                  "summary": "Domestic transfer below the OTP threshold",
+                  "value": {
+                    "sourceAccount": "AE070331234567890123456",
+                    "beneficiaryId": "BEN-4471029",
+                    "amount": 1500.00,
+                    "currency": "AED",
+                    "transferType": "DOMESTIC",
+                    "purposeCode": "FAM",
+                    "remarks": "Monthly support"
+                  }
+                },
+                "aboveOtpThreshold": {
+                  "summary": "Transfer requiring OTP (BR-005)",
+                  "value": {
+                    "sourceAccount": "AE070331234567890123456",
+                    "beneficiaryId": "BEN-4471029",
+                    "amount": 32000.00,
+                    "currency": "AED",
+                    "transferType": "DOMESTIC",
+                    "purposeCode": "PRP",
+                    "remarks": "Property deposit"
+                  }
+                },
+                "international": {
+                  "summary": "International SWIFT transfer",
+                  "value": {
+                    "sourceAccount": "AE070331234567890123456",
+                    "beneficiaryId": "BEN-9982117",
+                    "amount": 4800.00,
+                    "currency": "USD",
+                    "transferType": "INTERNATIONAL",
+                    "purposeCode": "EDU",
+                    "chargeBearer": "SHA",
+                    "remarks": "Tuition fee"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Transfer created and posted. A unique transaction ID is issued (BR-010).",
+            "headers": {
+              "Location": {
+                "description": "URI of the created transfer",
+                "schema": { "type": "string" },
+                "example": "/v1/transfers/TRX-20260612-9A3FK21C"
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/TransferResponse" },
+                "example": {
+                  "transactionId": "TRX-20260612-9A3FK21C",
+                  "status": "COMPLETED",
+                  "sourceAccount": "AE070331234567890123456",
+                  "beneficiaryId": "BEN-4471029",
+                  "amount": 1500.00,
+                  "currency": "AED",
+                  "fee": 1.05,
+                  "valueDate": "2026-06-12",
+                  "createdAt": "2026-06-12T09:14:22Z",
+                  "dailyLimitRemaining": 98500.00
+                }
+              }
+            }
+          },
+          "200": {
+            "description": "Idempotent replay: the original transfer is returned unchanged (BR-011). Also returned when a same-day cut-off shifts the value date (BR-013, TRF-4014).",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/TransferResponse" }
+              }
+            }
+          },
+          "202": {
+            "description": "Accepted but held. Either AWAITING_OTP (BR-005) or PENDING_COMPLIANCE (BR-014).",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/TransferResponse" },
+                "example": {
+                  "transactionId": "TRX-20260612-7C2LM88D",
+                  "status": "AWAITING_OTP",
+                  "amount": 32000.00,
+                  "currency": "AED",
+                  "otpReference": "OTP-77213904",
+                  "otpExpiresAt": "2026-06-12T09:17:22Z",
+                  "attemptsRemaining": 3
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Malformed request. Includes TRF-4008 (BR-006) and a missing idempotency key (BR-011).",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ErrorResponse" },
+              "example": { "code": "TRF-4008", "constant": "INVALID_AMOUNT", "message": "Please enter a valid amount.", "ruleId": "BR-006", "traceId": "b7f1c2d3-1a2b-4c5d-8e9f-0a1b2c3d4e5f" } } }
+          },
+          "401": {
+            "description": "OTP required, invalid, or expired (BR-005): TRF-4005, TRF-4006, TRF-4007.",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ErrorResponse" } } }
+          },
+          "403": {
+            "description": "Account restricted or frozen (BR-009): TRF-4011.",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ErrorResponse" },
+              "example": { "code": "TRF-4011", "constant": "ACCOUNT_RESTRICTED", "message": "This account cannot be used for transfers. Please contact the bank.", "ruleId": "BR-009", "traceId": "3c4d5e6f-7a8b-49c0-b1d2-e3f4a5b6c7d8" } } }
+          },
+          "409": {
+            "description": "Idempotency conflict (BR-011): TRF-4012.",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ErrorResponse" } } }
+          },
+          "422": {
+            "description": "Business rule violation. TRF-4001 (BR-001), TRF-4002 (BR-002), TRF-4003 (BR-003), TRF-4004 (BR-004), TRF-4009 (BR-007), TRF-4010 (BR-008), TRF-4013 (BR-012).",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/ErrorResponse" },
+                "examples": {
+                  "singleLimit": {
+                    "summary": "BR-001 breach",
+                    "value": { "code": "TRF-4001", "constant": "AMOUNT_EXCEEDS_SINGLE_LIMIT", "message": "The amount exceeds the single transfer limit of AED 50,000.", "ruleId": "BR-001", "limit": 50000.00, "requested": 50000.01, "traceId": "9e8d7c6b-5a4f-4321-9876-0fedcba98765" }
+                  },
+                  "dailyLimit": {
+                    "summary": "BR-002 breach",
+                    "value": { "code": "TRF-4002", "constant": "DAILY_LIMIT_EXCEEDED", "message": "You have reached your daily transfer limit.", "ruleId": "BR-002", "limit": 100000.00, "consumedToday": 95000.00, "traceId": "11aa22bb-33cc-44dd-55ee-66ff77008899" }
+                  },
+                  "insufficientFunds": {
+                    "summary": "BR-003 breach",
+                    "value": { "code": "TRF-4003", "constant": "INSUFFICIENT_FUNDS", "message": "Your available balance is not sufficient.", "ruleId": "BR-003", "traceId": "aa11bb22-cc33-dd44-ee55-ff6677889900" }
+                  }
+                }
+              }
+            }
+          },
+          "429": { "description": "Rate limit exceeded. 60 requests per minute per customer." },
+          "504": {
+            "description": "Core banking timeout (NFR-005): TRF-5001. The client must retry with the SAME idempotency key.",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ErrorResponse" } } }
+          }
+        },
+        "security": [{ "bearerAuth": [] }]
+      },
+      "get": {
+        "tags": ["Transfers"],
+        "summary": "List transfers for the authenticated customer",
+        "operationId": "listTransfers",
+        "parameters": [
+          { "name": "fromDate", "in": "query", "schema": { "type": "string", "format": "date" }, "example": "2026-06-01" },
+          { "name": "toDate", "in": "query", "schema": { "type": "string", "format": "date" }, "example": "2026-06-12" },
+          { "name": "status", "in": "query", "schema": { "$ref": "#/components/schemas/TransferStatus" } },
+          { "name": "page", "in": "query", "schema": { "type": "integer", "default": 0, "minimum": 0 } },
+          { "name": "size", "in": "query", "schema": { "type": "integer", "default": 20, "maximum": 100 } }
+        ],
+        "responses": {
+          "200": {
+            "description": "Paged list of transfers",
+            "content": { "application/json": { "schema": {
+              "type": "object",
+              "properties": {
+                "content": { "type": "array", "items": { "$ref": "#/components/schemas/TransferResponse" } },
+                "totalElements": { "type": "integer", "example": 47 },
+                "totalPages": { "type": "integer", "example": 3 },
+                "page": { "type": "integer", "example": 0 }
+              }
+            } } }
+          }
+        },
+        "security": [{ "bearerAuth": [] }]
+      }
+    },
+    "/v1/transfers/{transferId}": {
+      "get": {
+        "tags": ["Transfers"],
+        "summary": "Retrieve a single transfer by transaction ID",
+        "operationId": "getTransfer",
+        "parameters": [
+          { "name": "transferId", "in": "path", "required": true, "schema": { "type": "string", "pattern": "^TRX-[0-9]{8}-[A-Z0-9]{8}$" }, "example": "TRX-20260612-9A3FK21C" }
+        ],
+        "responses": {
+          "200": { "description": "Transfer found", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/TransferResponse" } } } },
+          "404": { "description": "Transfer not found or not owned by the authenticated customer" }
+        },
+        "security": [{ "bearerAuth": [] }]
+      }
+    },
+    "/v1/transfers/{transferId}/otp/verify": {
+      "post": {
+        "tags": ["Transfers"],
+        "summary": "Verify the OTP and post a held transfer",
+        "description": "Implements BR-005. The OTP is valid for 180 seconds and permits three attempts. A successful verification posts the transfer and returns the final status. The OTP is bound to a single transferId and cannot be reused.",
+        "operationId": "verifyTransferOtp",
+        "parameters": [
+          { "name": "transferId", "in": "path", "required": true, "schema": { "type": "string" }, "example": "TRX-20260612-7C2LM88D" }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": { "application/json": { "schema": {
+            "type": "object",
+            "required": ["otpReference", "otpCode"],
+            "properties": {
+              "otpReference": { "type": "string", "example": "OTP-77213904" },
+              "otpCode": { "type": "string", "pattern": "^[0-9]{6}$", "example": "483920" }
+            }
+          } } }
+        },
+        "responses": {
+          "200": { "description": "OTP verified, transfer posted", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/TransferResponse" } } } },
+          "401": {
+            "description": "TRF-4006 invalid or TRF-4007 expired",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ErrorResponse" },
+              "example": { "code": "TRF-4006", "constant": "OTP_INVALID", "message": "The code entered is incorrect.", "ruleId": "BR-005", "attemptsRemaining": 2, "traceId": "5f6a7b8c-9d0e-41f2-a3b4-c5d6e7f8a9b0" } } }
+          },
+          "409": { "description": "Transfer is not in AWAITING_OTP status" },
+          "422": { "description": "A business rule re-check failed at posting time, for example the account was frozen after OTP issue (BR-009)." }
+        },
+        "security": [{ "bearerAuth": [] }]
+      }
+    },
+    "/v1/transfers/{transferId}/otp/resend": {
+      "post": {
+        "tags": ["Transfers"],
+        "summary": "Resend the OTP for a held transfer",
+        "description": "Maximum two resends per transfer. Each resend invalidates the previous OTP and restarts the 180-second window. Does not reset the three-attempt counter.",
+        "operationId": "resendTransferOtp",
+        "parameters": [
+          { "name": "transferId", "in": "path", "required": true, "schema": { "type": "string" } }
+        ],
+        "responses": {
+          "200": { "description": "New OTP issued" },
+          "429": { "description": "Resend limit reached" }
+        },
+        "security": [{ "bearerAuth": [] }]
+      }
+    },
+    "/v1/accounts/{accountId}/balance": {
+      "get": {
+        "tags": ["Accounts"],
+        "summary": "Retrieve available balance and account status",
+        "description": "Supports BR-003 and BR-009. availableBalance already accounts for holds and any approved overdraft.",
+        "operationId": "getAccountBalance",
+        "parameters": [
+          { "name": "accountId", "in": "path", "required": true, "schema": { "type": "string" }, "example": "AE070331234567890123456" }
+        ],
+        "responses": {
+          "200": {
+            "description": "Balance retrieved",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/AccountBalance" },
+              "example": {
+                "accountId": "AE070331234567890123456",
+                "accountStatus": "ACTIVE",
+                "ledgerBalance": 42350.75,
+                "holdAmount": 1200.00,
+                "overdraftLimit": 0.00,
+                "availableBalance": 41150.75,
+                "currency": "AED",
+                "supportedCurrencies": ["AED", "USD"],
+                "asOf": "2026-06-12T09:14:20Z"
+              } } }
+          },
+          "403": { "description": "Account frozen (BR-009): TRF-4011" },
+          "404": { "description": "Account not found" }
+        },
+        "security": [{ "bearerAuth": [] }]
+      }
+    },
+    "/v1/beneficiaries": {
+      "get": {
+        "tags": ["Beneficiaries"],
+        "summary": "List registered beneficiaries",
+        "description": "Supports BR-004 and BR-012. activatedAt drives the 30-minute cooling period.",
+        "operationId": "listBeneficiaries",
+        "parameters": [
+          { "name": "status", "in": "query", "schema": { "$ref": "#/components/schemas/BeneficiaryStatus" } }
+        ],
+        "responses": {
+          "200": {
+            "description": "Beneficiary list",
+            "content": { "application/json": { "schema": { "type": "array", "items": { "$ref": "#/components/schemas/Beneficiary" } },
+              "example": [
+                { "beneficiaryId": "BEN-4471029", "nickname": "Ahmed - Salary", "iban": "AE480260000012345678901", "bankCode": "EBILAEAD", "status": "ACTIVE", "type": "DOMESTIC", "currency": "AED", "createdAt": "2025-11-02T11:03:00Z", "activatedAt": "2025-11-02T11:33:00Z" },
+                { "beneficiaryId": "BEN-9982117", "nickname": "University Fees", "iban": "GB29NWBK60161331926819", "bankCode": "NWBKGB2L", "status": "ACTIVE", "type": "INTERNATIONAL", "currency": "USD", "createdAt": "2026-01-18T07:45:00Z", "activatedAt": "2026-01-18T08:15:00Z" },
+                { "beneficiaryId": "BEN-5510388", "nickname": "Landlord", "iban": "AE900500000098765432109", "bankCode": "ADCBAEAA", "status": "SUSPENDED", "type": "DOMESTIC", "currency": "AED", "createdAt": "2026-03-09T13:20:00Z", "activatedAt": "2026-03-09T13:50:00Z" }
+              ] } }
+          }
+        },
+        "security": [{ "bearerAuth": [] }]
+      },
+      "post": {
+        "tags": ["Beneficiaries"],
+        "summary": "Register a new beneficiary",
+        "description": "A newly registered beneficiary enters the 30-minute cooling period defined in BR-012, measured from activatedAt.",
+        "operationId": "createBeneficiary",
+        "requestBody": {
+          "required": true,
+          "content": { "application/json": { "schema": {
+            "type": "object",
+            "required": ["nickname", "iban", "type", "currency"],
+            "properties": {
+              "nickname": { "type": "string", "maxLength": 40, "example": "Brother - Dubai" },
+              "iban": { "type": "string", "example": "AE480260000012345678901" },
+              "bankCode": { "type": "string", "example": "EBILAEAD" },
+              "type": { "type": "string", "enum": ["INTERNAL", "DOMESTIC", "INTERNATIONAL"] },
+              "currency": { "type": "string", "example": "AED" }
+            }
+          } } }
+        },
+        "responses": {
+          "201": { "description": "Beneficiary created in PENDING status pending OTP activation" },
+          "409": { "description": "A beneficiary with the same IBAN already exists" }
+        },
+        "security": [{ "bearerAuth": [] }]
+      }
+    },
+    "/v1/limits/utilisation": {
+      "get": {
+        "tags": ["Limits"],
+        "summary": "Retrieve daily limit utilisation",
+        "description": "Supports BR-001 and BR-002. The window resets at 00:00:00 Gulf Standard Time (UTC+4). See DEF-1007 for the historical UTC-reset defect.",
+        "operationId": "getLimitUtilisation",
+        "responses": {
+          "200": {
+            "description": "Utilisation snapshot",
+            "content": { "application/json": { "schema": {
+              "type": "object",
+              "properties": {
+                "singleTransferLimit": { "type": "number", "example": 50000.00 },
+                "dailyLimit": { "type": "number", "example": 100000.00 },
+                "consumedToday": { "type": "number", "example": 12500.00 },
+                "remainingToday": { "type": "number", "example": 87500.00 },
+                "otpThreshold": { "type": "number", "example": 25000.00 },
+                "windowResetsAt": { "type": "string", "format": "date-time", "example": "2026-06-13T00:00:00+04:00" }
+              }
+            } } }
+          }
+        },
+        "security": [{ "bearerAuth": [] }]
+      }
+    }
+  },
+  "components": {
+    "securitySchemes": {
+      "bearerAuth": { "type": "http", "scheme": "bearer", "bearerFormat": "JWT" }
+    },
+    "schemas": {
+      "TransferRequest": {
+        "type": "object",
+        "required": ["sourceAccount", "beneficiaryId", "amount", "currency", "transferType"],
+        "properties": {
+          "sourceAccount": { "type": "string", "description": "Source IBAN. Must differ from the beneficiary IBAN (BR-007).", "example": "AE070331234567890123456" },
+          "beneficiaryId": { "type": "string", "description": "Registered beneficiary. Must be ACTIVE (BR-004).", "example": "BEN-4471029" },
+          "amount": { "type": "number", "format": "double", "minimum": 0.01, "maximum": 50000.00, "multipleOf": 0.01, "description": "Greater than zero (BR-006), at most AED 50,000 (BR-001), at most two decimals.", "example": 1500.00 },
+          "currency": { "type": "string", "minLength": 3, "maxLength": 3, "enum": ["AED", "USD", "EUR", "GBP", "SAR"], "description": "Must be enabled on the source account (BR-008).", "example": "AED" },
+          "transferType": { "type": "string", "enum": ["OWN_ACCOUNT", "INTERNAL", "DOMESTIC", "INSTANT", "INTERNATIONAL"] },
+          "purposeCode": { "type": "string", "description": "Central bank purpose of payment code.", "example": "FAM" },
+          "chargeBearer": { "type": "string", "enum": ["OUR", "SHA", "BEN"], "default": "SHA" },
+          "remarks": { "type": "string", "maxLength": 140, "example": "Monthly support" },
+          "scheduledDate": { "type": "string", "format": "date", "description": "Optional future value date. Subject to the cut-off rule (BR-013)." }
+        }
+      },
+      "TransferResponse": {
+        "type": "object",
+        "properties": {
+          "transactionId": { "type": "string", "pattern": "^TRX-[0-9]{8}-[A-Z0-9]{8}$", "description": "Globally unique, immutable (BR-010).", "example": "TRX-20260612-9A3FK21C" },
+          "status": { "$ref": "#/components/schemas/TransferStatus" },
+          "sourceAccount": { "type": "string" },
+          "beneficiaryId": { "type": "string" },
+          "amount": { "type": "number", "format": "double" },
+          "currency": { "type": "string" },
+          "fee": { "type": "number", "format": "double" },
+          "exchangeRate": { "type": "number", "format": "double", "nullable": true },
+          "valueDate": { "type": "string", "format": "date" },
+          "createdAt": { "type": "string", "format": "date-time" },
+          "dailyLimitRemaining": { "type": "number", "format": "double" },
+          "otpReference": { "type": "string", "nullable": true },
+          "otpExpiresAt": { "type": "string", "format": "date-time", "nullable": true },
+          "attemptsRemaining": { "type": "integer", "nullable": true },
+          "originalTransactionId": { "type": "string", "nullable": true, "description": "Populated on reversals only (BR-010 AC4)." }
+        }
+      },
+      "TransferStatus": {
+        "type": "string",
+        "enum": ["PENDING", "AWAITING_OTP", "PENDING_COMPLIANCE", "PROCESSING", "COMPLETED", "REJECTED", "REVERSED", "ABANDONED"]
+      },
+      "BeneficiaryStatus": { "type": "string", "enum": ["ACTIVE", "PENDING", "SUSPENDED", "DELETED"] },
+      "Beneficiary": {
+        "type": "object",
+        "properties": {
+          "beneficiaryId": { "type": "string" },
+          "nickname": { "type": "string" },
+          "iban": { "type": "string" },
+          "bankCode": { "type": "string" },
+          "status": { "$ref": "#/components/schemas/BeneficiaryStatus" },
+          "type": { "type": "string", "enum": ["INTERNAL", "DOMESTIC", "INTERNATIONAL"] },
+          "currency": { "type": "string" },
+          "createdAt": { "type": "string", "format": "date-time" },
+          "activatedAt": { "type": "string", "format": "date-time", "description": "Start of the BR-012 cooling period." }
+        }
+      },
+      "AccountBalance": {
+        "type": "object",
+        "properties": {
+          "accountId": { "type": "string" },
+          "accountStatus": { "type": "string", "enum": ["ACTIVE", "DORMANT", "FRZ", "CLOSED"], "description": "FRZ blocks outbound transfers (BR-009)." },
+          "ledgerBalance": { "type": "number", "format": "double" },
+          "holdAmount": { "type": "number", "format": "double" },
+          "overdraftLimit": { "type": "number", "format": "double" },
+          "availableBalance": { "type": "number", "format": "double", "description": "ledgerBalance - holdAmount + overdraftLimit (BR-003)." },
+          "currency": { "type": "string" },
+          "supportedCurrencies": { "type": "array", "items": { "type": "string" }, "description": "Drives the BR-008 check." },
+          "asOf": { "type": "string", "format": "date-time" }
+        }
+      },
+      "ErrorResponse": {
+        "type": "object",
+        "required": ["code", "constant", "message"],
+        "properties": {
+          "code": { "type": "string", "example": "TRF-4001" },
+          "constant": { "type": "string", "example": "AMOUNT_EXCEEDS_SINGLE_LIMIT" },
+          "message": { "type": "string", "description": "Customer-facing text. Must not disclose internal reasons (BR-004, BR-009).", "example": "The amount exceeds the single transfer limit of AED 50,000." },
+          "ruleId": { "type": "string", "description": "Business rule that produced the rejection.", "example": "BR-001" },
+          "limit": { "type": "number", "nullable": true },
+          "requested": { "type": "number", "nullable": true },
+          "consumedToday": { "type": "number", "nullable": true },
+          "attemptsRemaining": { "type": "integer", "nullable": true },
+          "traceId": { "type": "string", "description": "Correlates to the audit record required by BR-015." },
+          "timestamp": { "type": "string", "format": "date-time" }
+        }
+      }
+    }
+  }
+}

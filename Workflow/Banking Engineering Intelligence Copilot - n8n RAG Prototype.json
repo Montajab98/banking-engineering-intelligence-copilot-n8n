@@ -1,0 +1,911 @@
+{
+  "name": "Banking Engineering Intelligence Copilot - n8n RAG Prototype",
+  "nodes": [
+    {
+      "parameters": {},
+      "type": "n8n-nodes-base.manualTrigger",
+      "typeVersion": 1,
+      "position": [
+        -2192,
+        352
+      ],
+      "id": "1a736fde-2bab-459a-ae06-26146371d31b",
+      "name": "Manual Ingestion Trigger"
+    },
+    {
+      "parameters": {
+        "fileSelector": "/files/*",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.readWriteFile",
+      "typeVersion": 1.1,
+      "position": [
+        -1984,
+        352
+      ],
+      "id": "cc8800c7-ad58-44bf-93bc-3544d22c16dc",
+      "name": "Read Source Files"
+    },
+    {
+      "parameters": {
+        "rules": {
+          "values": [
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "strict",
+                  "version": 3
+                },
+                "conditions": [
+                  {
+                    "leftValue": "={{ $binary.data.fileExtension }}",
+                    "rightValue": "pdf",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals"
+                    },
+                    "id": "461c5641-0aae-4c81-95e4-beb91dc934e7"
+                  }
+                ],
+                "combinator": "and"
+              },
+              "renameOutput": true,
+              "outputKey": "pdf"
+            },
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "strict",
+                  "version": 3
+                },
+                "conditions": [
+                  {
+                    "id": "e4824523-1e6b-4eda-942e-6541093581b4",
+                    "leftValue": "={{ $binary.data.fileExtension }}",
+                    "rightValue": "csv",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals",
+                      "name": "filter.operator.equals"
+                    }
+                  }
+                ],
+                "combinator": "and"
+              },
+              "renameOutput": true,
+              "outputKey": "csv"
+            },
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "strict",
+                  "version": 3
+                },
+                "conditions": [
+                  {
+                    "id": "c2553972-5e94-4aea-ba64-ea5f0309d6f3",
+                    "leftValue": "={{ $binary.data.fileExtension }}",
+                    "rightValue": "xlsx",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals",
+                      "name": "filter.operator.equals"
+                    }
+                  }
+                ],
+                "combinator": "and"
+              },
+              "renameOutput": true,
+              "outputKey": "xlsx"
+            },
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "strict",
+                  "version": 3
+                },
+                "conditions": [
+                  {
+                    "id": "7e9b411e-b952-44b1-8f74-3f4619d94c92",
+                    "leftValue": "={{ $binary.data.fileExtension }}",
+                    "rightValue": "txt",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals",
+                      "name": "filter.operator.equals"
+                    }
+                  }
+                ],
+                "combinator": "and"
+              },
+              "renameOutput": true,
+              "outputKey": "txt"
+            },
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "strict",
+                  "version": 3
+                },
+                "conditions": [
+                  {
+                    "id": "7a71ba7a-ac46-4b78-a613-4954bf7e7e48",
+                    "leftValue": "={{ $binary.data.fileExtension }}",
+                    "rightValue": "json",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals",
+                      "name": "filter.operator.equals"
+                    }
+                  }
+                ],
+                "combinator": "and"
+              },
+              "renameOutput": true,
+              "outputKey": "json"
+            }
+          ]
+        },
+        "options": {
+          "fallbackOutput": "extra"
+        }
+      },
+      "type": "n8n-nodes-base.switch",
+      "typeVersion": 3.4,
+      "position": [
+        -1744,
+        288
+      ],
+      "id": "a6b594b8-5ca3-452c-989a-291818c867a3",
+      "name": "Route by File Type"
+    },
+    {
+      "parameters": {
+        "operation": "pdf",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.extractFromFile",
+      "typeVersion": 1.1,
+      "position": [
+        -1344,
+        48
+      ],
+      "id": "0a38e8f0-0c7b-4ca9-9378-4f08bbb6baa5",
+      "name": "Extract Requirements PDF"
+    },
+    {
+      "parameters": {
+        "operation": "xlsx",
+        "options": {
+          "headerRow": true,
+          "range": ""
+        }
+      },
+      "type": "n8n-nodes-base.extractFromFile",
+      "typeVersion": 1.1,
+      "position": [
+        -1312,
+        528
+      ],
+      "id": "faa66fa0-9a07-41f8-ba95-b3fbadff0fd5",
+      "name": "Extract Regression Tests"
+    },
+    {
+      "parameters": {
+        "options": {}
+      },
+      "type": "n8n-nodes-base.extractFromFile",
+      "typeVersion": 1.1,
+      "position": [
+        -1344,
+        208
+      ],
+      "id": "9bec102e-65e3-4d10-9df7-acc5943b4659",
+      "name": "Extract Known Defects"
+    },
+    {
+      "parameters": {
+        "operation": "text",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.extractFromFile",
+      "typeVersion": 1.1,
+      "position": [
+        -1344,
+        368
+      ],
+      "id": "fa575137-5a48-42db-ac1a-fce88076c621",
+      "name": "Extract Production Incidents"
+    },
+    {
+      "parameters": {
+        "operation": "fromJson",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.extractFromFile",
+      "typeVersion": 1.1,
+      "position": [
+        -1328,
+        720
+      ],
+      "id": "2ecfb297-384d-48a0-bbe3-d77a1597b4bb",
+      "name": "Extract API Specification"
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "570dcca9-e993-4654-b03d-29fb7684c995",
+              "name": "source",
+              "value": "FundTransferRequirements.pdf",
+              "type": "string"
+            },
+            {
+              "id": "31732086-467f-4be5-bc94-dfef560096ee",
+              "name": "documentType",
+              "value": "Requirement",
+              "type": "string"
+            }
+          ]
+        },
+        "includeOtherFields": true,
+        "options": {}
+      },
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        -1152,
+        48
+      ],
+      "id": "b0633205-8f6c-4131-b728-4080e42cea8d",
+      "name": "Add Requirement Metadata"
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "45995ec4-a40c-4754-82b8-309c3edebd4c",
+              "name": "text",
+              "value": "=Defect {{ $json.DefectID }}: {{ $json.Title }} — Module: {{ $json.Module }} — Severity: {{ $json.Severity }} — Priority: {{ $json.Priority }} — Status: {{ $json.Status }} — Environment: {{ $json.Environment }} — Related Requirement: {{ $json.RelatedRequirement }} — Related Test Case: {{ $json.RelatedTestCase }} — Steps to Reproduce: {{ $json.StepsToReproduce }} — Expected: {{ $json.ExpectedResult }} — Actual: {{ $json.ActualResult }} — Root Cause: {{ $json.RootCause }} — Workaround: {{ $json.Workaround }} — Fix Version: {{ $json.FixVersion }}",
+              "type": "string"
+            },
+            {
+              "id": "570dcca9-e993-4654-b03d-29fb7684c995",
+              "name": "source",
+              "value": "KnownDefects.csv",
+              "type": "string"
+            },
+            {
+              "id": "31732086-467f-4be5-bc94-dfef560096ee",
+              "name": "documentType",
+              "value": "KnownDefect",
+              "type": "string"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        -1120,
+        208
+      ],
+      "id": "fa1b2471-0ef8-4f92-826b-e83815bce52a",
+      "name": "Add Defect Metadata"
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "6aed7298-91b8-47f4-8bd8-2c0da6b02fdb",
+              "name": "text",
+              "value": "=Test Case {{ $json.TestCaseID }}: {{ $json.TestCaseName }} — Steps: {{ $json.Steps }} — Expected: {{ $json.ExpectedResult }} — Priority: {{ $json.Priority }}",
+              "type": "string"
+            },
+            {
+              "id": "570dcca9-e993-4654-b03d-29fb7684c995",
+              "name": "source",
+              "value": "RegressionTestCases.xlsx",
+              "type": "string"
+            },
+            {
+              "id": "31732086-467f-4be5-bc94-dfef560096ee",
+              "name": "documentType",
+              "value": "RegressionTestCase",
+              "type": "string"
+            }
+          ]
+        },
+        "includeOtherFields": true,
+        "options": {}
+      },
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        -1120,
+        528
+      ],
+      "id": "8d627e4b-8107-4eee-a49b-608fc58e2c75",
+      "name": "Add Test Case Metadata"
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "1214585b-cca0-4701-bf87-acd144483ece",
+              "name": "text",
+              "value": "=Defect {{ $json.DefectID }} | Severity: {{ $json.Severity }} | Status: {{ $json.Status }} | {{ $json.Description }}",
+              "type": "string"
+            },
+            {
+              "id": "570dcca9-e993-4654-b03d-29fb7684c995",
+              "name": "source",
+              "value": "ProductionIssues.txt",
+              "type": "string"
+            },
+            {
+              "id": "31732086-467f-4be5-bc94-dfef560096ee",
+              "name": "documentType",
+              "value": "ProductionIssue",
+              "type": "string"
+            }
+          ]
+        },
+        "includeOtherFields": true,
+        "options": {}
+      },
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        -1104,
+        352
+      ],
+      "id": "ae590239-cd47-4813-bb01-29814aaa0d21",
+      "name": "Add Incident Metadata"
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "060eade3-ae7d-412a-afdb-9f7a337607fc",
+              "name": "text",
+              "value": "={{ JSON.stringify($json.data) }}",
+              "type": "string"
+            },
+            {
+              "id": "570dcca9-e993-4654-b03d-29fb7684c995",
+              "name": "source",
+              "value": "BankingAPI-Swagger.json",
+              "type": "string"
+            },
+            {
+              "id": "31732086-467f-4be5-bc94-dfef560096ee",
+              "name": "documentType",
+              "value": "APISpecification",
+              "type": "string"
+            }
+          ]
+        },
+        "includeOtherFields": true,
+        "options": {}
+      },
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        -1120,
+        736
+      ],
+      "id": "a4dd499e-96c9-4eef-bc70-bfd9e645fba3",
+      "name": "Add API Metadata"
+    },
+    {
+      "parameters": {
+        "numberInputs": 5
+      },
+      "type": "n8n-nodes-base.merge",
+      "typeVersion": 3.2,
+      "position": [
+        -896,
+        272
+      ],
+      "id": "46d92f26-9442-441b-8b1f-cdeb42a4155e",
+      "name": "Merge Knowledge Documents"
+    },
+    {
+      "parameters": {
+        "jsonMode": "expressionData",
+        "jsonData": "={{ $json.text }}",
+        "textSplittingMode": "custom",
+        "options": {
+          "metadata": {
+            "metadataValues": [
+              {
+                "name": "document_type",
+                "value": "={{ $json.documentType }}"
+              },
+              {
+                "name": "source",
+                "value": "={{ $json.source }}"
+              }
+            ]
+          }
+        }
+      },
+      "type": "@n8n/n8n-nodes-langchain.documentDefaultDataLoader",
+      "typeVersion": 1.1,
+      "position": [
+        -432,
+        464
+      ],
+      "id": "70d4551d-2b51-4857-8c81-f8c52915c588",
+      "name": "Load Documents"
+    },
+    {
+      "parameters": {
+        "chunkSize": 800,
+        "chunkOverlap": 150,
+        "options": {}
+      },
+      "type": "@n8n/n8n-nodes-langchain.textSplitterRecursiveCharacterTextSplitter",
+      "typeVersion": 1,
+      "position": [
+        -240,
+        688
+      ],
+      "id": "739924a2-df94-4c50-bcb2-8a5df441a5f1",
+      "name": "Split Documents"
+    },
+    {
+      "parameters": {
+        "model": "nomic-embed-text:latest"
+      },
+      "type": "@n8n/n8n-nodes-langchain.embeddingsOllama",
+      "typeVersion": 1,
+      "position": [
+        -560,
+        624
+      ],
+      "id": "199874e9-eedf-4b0f-9f31-bd4f39c58ed4",
+      "name": "Generate Ingestion Embeddings",
+      "credentials": {
+        "ollamaApi": {
+          "id": "9yf57SUhq1lWvyOc",
+          "name": "Ollama account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "options": {}
+      },
+      "type": "@n8n/n8n-nodes-langchain.chatTrigger",
+      "typeVersion": 1.4,
+      "position": [
+        -160,
+        -32
+      ],
+      "id": "bce46039-ad22-4187-8d50-a314bc2d1fbb",
+      "name": "Chat Input",
+      "webhookId": "9add0776-e3da-4572-985f-116d07b43cd2"
+    },
+    {
+      "parameters": {
+        "options": {
+          "systemMessage": "You are a Banking Engineering AI Assistant.\n\nYou have access to a tool called Banking Knowledge Retriever.\n\nMANDATORY RULE:\nFor every question about banking requirements, business rules, acceptance criteria, APIs, test cases, defects, or production incidents, you MUST call Banking Knowledge Retriever before answering.\n\nNever answer a banking engineering question without calling the tool.\n\nWhen the user mentions an identifier such as:\nBR-xxx\nDEF-xxxx\nTC-xx\nINC-xxxx\nTRF-xxxx\n\npreserve the exact identifier in the search query.\n\nFor example:\n\nUser:\nWhat are the acceptance criteria for BR-011?\n\nTool search:\nBR-011 Acceptance Criteria\n\nAfter retrieving documents:\n1. Answer only from the retrieved information.\n2. Do not invent missing information.\n3. Include relevant identifiers.\n4. Include the confirmed source filenames.\n\nIf no relevant information is retrieved, answer exactly:\n\nI could not find this information in the banking knowledge base."
+        }
+      },
+      "type": "@n8n/n8n-nodes-langchain.agent",
+      "typeVersion": 3.1,
+      "position": [
+        48,
+        -32
+      ],
+      "id": "51cd8c43-837c-4b2d-bed8-676f1378dc4d",
+      "name": "Banking AI Agent"
+    },
+    {
+      "parameters": {},
+      "type": "@n8n/n8n-nodes-langchain.memoryBufferWindow",
+      "typeVersion": 1.4,
+      "position": [
+        128,
+        160
+      ],
+      "id": "e818a610-cd7d-47f3-b40f-415999d23b87",
+      "name": "Conversation Memory"
+    },
+    {
+      "parameters": {
+        "model": "qwen3:8b",
+        "options": {}
+      },
+      "type": "@n8n/n8n-nodes-langchain.lmChatOllama",
+      "typeVersion": 1,
+      "position": [
+        16,
+        288
+      ],
+      "id": "2f969104-9d97-43f5-bb0d-85d3d302bf99",
+      "name": "LLM - Qwen 3 8B",
+      "credentials": {
+        "ollamaApi": {
+          "id": "9yf57SUhq1lWvyOc",
+          "name": "Ollama account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "mode": "insert",
+        "qdrantCollection": {
+          "__rl": true,
+          "value": "=banking_engineering_knowledge_v3",
+          "mode": "id"
+        },
+        "options": {}
+      },
+      "type": "@n8n/n8n-nodes-langchain.vectorStoreQdrant",
+      "typeVersion": 1.3,
+      "position": [
+        -544,
+        288
+      ],
+      "id": "07ee1d88-e0c5-4e88-b4d8-5e66926d6720",
+      "name": "Index Documents in Qdrant",
+      "credentials": {
+        "qdrantApi": {
+          "id": "soOTvmx7FgOSmEC4",
+          "name": "Qdrant account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "model": "nomic-embed-text:latest"
+      },
+      "type": "@n8n/n8n-nodes-langchain.embeddingsOllama",
+      "typeVersion": 1,
+      "position": [
+        400,
+        528
+      ],
+      "id": "b5d58aca-5765-4759-a269-f582265622ee",
+      "name": "Generate Query Embeddings",
+      "credentials": {
+        "ollamaApi": {
+          "id": "9yf57SUhq1lWvyOc",
+          "name": "Ollama account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "mode": "retrieve-as-tool",
+        "toolDescription": "Search the banking engineering knowledge base for exact business rules, acceptance criteria, API specifications, regression test cases, known defects, and production incidents.\n\nIMPORTANT SEARCH BEHAVIOR:\n- When the user mentions an identifier such as BR-011, DEF-1017, TC-FT-041, INC-xxxx, or TRF-xxxx, include that exact identifier in the search query.\n- For acceptance-criteria questions, search using the exact BR identifier plus the phrase \"Acceptance Criteria\".\n- Preserve exact banking identifiers in the retrieval query.\n- Do not replace exact identifiers with generic descriptions.",
+        "qdrantCollection": {
+          "__rl": true,
+          "value": "=banking_engineering_knowledge_v3",
+          "mode": "id"
+        },
+        "topK": 10,
+        "options": {}
+      },
+      "type": "@n8n/n8n-nodes-langchain.vectorStoreQdrant",
+      "typeVersion": 1.3,
+      "position": [
+        304,
+        320
+      ],
+      "id": "686fce50-7fe2-416e-bfb9-24a57bebe4e4",
+      "name": "Banking Knowledge Retriever",
+      "credentials": {
+        "qdrantApi": {
+          "id": "soOTvmx7FgOSmEC4",
+          "name": "Qdrant account"
+        }
+      }
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "Manual Ingestion Trigger": {
+      "main": [
+        [
+          {
+            "node": "Read Source Files",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Read Source Files": {
+      "main": [
+        [
+          {
+            "node": "Route by File Type",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Route by File Type": {
+      "main": [
+        [
+          {
+            "node": "Extract Requirements PDF",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Extract Known Defects",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Extract Regression Tests",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Extract Production Incidents",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Extract API Specification",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Extract Requirements PDF": {
+      "main": [
+        [
+          {
+            "node": "Add Requirement Metadata",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Extract Known Defects": {
+      "main": [
+        [
+          {
+            "node": "Add Defect Metadata",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Extract Regression Tests": {
+      "main": [
+        [
+          {
+            "node": "Add Test Case Metadata",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Extract Production Incidents": {
+      "main": [
+        [
+          {
+            "node": "Add Incident Metadata",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Extract API Specification": {
+      "main": [
+        [
+          {
+            "node": "Add API Metadata",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Add Requirement Metadata": {
+      "main": [
+        [
+          {
+            "node": "Merge Knowledge Documents",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Add Defect Metadata": {
+      "main": [
+        [
+          {
+            "node": "Merge Knowledge Documents",
+            "type": "main",
+            "index": 1
+          }
+        ]
+      ]
+    },
+    "Add Incident Metadata": {
+      "main": [
+        [
+          {
+            "node": "Merge Knowledge Documents",
+            "type": "main",
+            "index": 2
+          }
+        ]
+      ]
+    },
+    "Add API Metadata": {
+      "main": [
+        [
+          {
+            "node": "Merge Knowledge Documents",
+            "type": "main",
+            "index": 3
+          }
+        ]
+      ]
+    },
+    "Merge Knowledge Documents": {
+      "main": [
+        [
+          {
+            "node": "Index Documents in Qdrant",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Load Documents": {
+      "ai_document": [
+        [
+          {
+            "node": "Index Documents in Qdrant",
+            "type": "ai_document",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Split Documents": {
+      "ai_textSplitter": [
+        [
+          {
+            "node": "Load Documents",
+            "type": "ai_textSplitter",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Generate Ingestion Embeddings": {
+      "ai_embedding": [
+        [
+          {
+            "node": "Index Documents in Qdrant",
+            "type": "ai_embedding",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Chat Input": {
+      "main": [
+        [
+          {
+            "node": "Banking AI Agent",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Add Test Case Metadata": {
+      "main": [
+        [
+          {
+            "node": "Merge Knowledge Documents",
+            "type": "main",
+            "index": 3
+          }
+        ]
+      ]
+    },
+    "Conversation Memory": {
+      "ai_memory": [
+        [
+          {
+            "node": "Banking AI Agent",
+            "type": "ai_memory",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "LLM - Qwen 3 8B": {
+      "ai_languageModel": [
+        [
+          {
+            "node": "Banking AI Agent",
+            "type": "ai_languageModel",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Generate Query Embeddings": {
+      "ai_embedding": [
+        [
+          {
+            "node": "Banking Knowledge Retriever",
+            "type": "ai_embedding",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Banking Knowledge Retriever": {
+      "ai_tool": [
+        [
+          {
+            "node": "Banking AI Agent",
+            "type": "ai_tool",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1",
+    "binaryMode": "separate"
+  },
+  "versionId": "a929bfda-a526-4233-b0c0-4e50c8f6b8de",
+  "meta": {
+    "templateCredsSetupCompleted": true,
+    "instanceId": "ed99129a4293392fbd25ce79bfbaff339bd8a1995bbfff22914e522616d690a5"
+  },
+  "nodeGroups": [],
+  "id": "spZdBqarmIQSNGBS",
+  "tags": []
+}

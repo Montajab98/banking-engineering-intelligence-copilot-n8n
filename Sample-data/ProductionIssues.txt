@@ -1,0 +1,403 @@
+================================================================================
+EMIRATES CONTINENTAL BANK (FICTITIOUS)
+DIGITAL PAYMENTS - PRODUCTION INCIDENT LOG
+Service: Fund Transfer Service (FTS)
+Log period: April 2025 - August 2026
+Classification: Internal - MOCK / TRAINING DATA
+
+NOTICE: Every incident, account, customer, name, amount, and timestamp in this
+file is fabricated for training purposes. This file contains no production
+banking data and describes no real customer or real institution.
+
+Severity scale:
+  SEV1 - Customer funds impacted or service unavailable. 15-minute updates.
+  SEV2 - Significant degradation or rule bypass. Hourly updates.
+  SEV3 - Limited customer impact with a workaround available.
+  SEV4 - Cosmetic or internal only.
+
+Related documents:
+  FundTransferRequirements.pdf  (FTR-BRD-v3.2)  - business rules BR-001..BR-015
+  BankingAPI-Swagger.json       (v3.2.0)        - API contract and error codes
+  KnownDefects.csv                              - defect register DEF-1001..DEF-1020
+  RegressionTestCases.xlsx      (suite 3.2.0)   - regression pack TC-FT-001..044
+================================================================================
+
+
+--------------------------------------------------------------------------------
+INCIDENT: INC-20250412-07
+TITLE: Duplicate debits and negative balances on concurrent transfers
+SEVERITY: SEV1
+STATUS: Closed
+DETECTED: 2025-04-12 08:42 GST (automated balance-exception alert)
+RESOLVED: 2025-04-12 15:20 GST
+DURATION: 6h 38m
+RELATED RULE: BR-003
+RELATED DEFECT: DEF-1002
+AFFECTED RELEASE: 2.4.3
+--------------------------------------------------------------------------------
+SUMMARY
+  During the salary-day peak, 214 accounts were driven into an unauthorised
+  negative balance. Customers who tapped Confirm twice, or whose mobile client
+  retried on a slow network, produced two simultaneous debits that each passed
+  the available-balance check.
+
+IMPACT
+  214 accounts affected. Total unauthorised debit exposure AED 1.84 million.
+  63 customers contacted the call centre. 9 complaints escalated to the
+  regulator's consumer protection channel.
+
+TIMELINE
+  08:42  Balance-exception job flags 31 accounts below zero with no overdraft.
+  08:55  SEV1 declared. Payments on-call and core banking on-call engaged.
+  09:20  Pattern identified: paired transactions within the same 40 ms window.
+  09:35  Mobile client confirm button debounced by a hotfix config push.
+  11:10  Root cause confirmed - the balance read happened before the database
+         transaction opened and no row lock was taken.
+  13:45  Fix deployed to production behind a feature flag.
+  15:20  All 214 accounts reversed and corrected. Incident closed.
+
+ROOT CAUSE
+  TransferValidator read the available balance through a separate read-only
+  connection and the posting service did not re-verify inside the transaction.
+  Two concurrent requests therefore both observed the pre-debit balance. This
+  violates BR-003 acceptance criterion AC3.
+
+RESOLUTION
+  Balance re-verification moved inside the posting transaction with a
+  SELECT FOR UPDATE lock on the account row. Released in 2.5.0.
+
+FOLLOW-UP ACTIONS
+  ACT-001  Add concurrency regression case TC-FT-032 to the pack.        DONE
+  ACT-002  Introduce mandatory idempotency keys (became BR-011).         DONE
+  ACT-003  Add a real-time negative-balance alert with a 5-minute SLA.   DONE
+
+
+--------------------------------------------------------------------------------
+INCIDENT: INC-20250708-04
+TITLE: Daily limit not released after core banking timeouts
+SEVERITY: SEV3
+STATUS: Closed
+DETECTED: 2025-07-08 12:15 GST (call centre volume spike)
+RESOLVED: 2025-07-10 09:00 GST
+DURATION: 44h 45m
+RELATED RULE: BR-002
+RELATED DEFECT: DEF-1016
+AFFECTED RELEASE: 2.5.2
+--------------------------------------------------------------------------------
+SUMMARY
+  A core banking maintenance window produced a burst of TRF-5001 timeouts.
+  The daily limit reservation taken before posting was never released on the
+  failure path, so customers whose transfers failed were blocked from retrying
+  for the rest of the day.
+
+IMPACT
+  1,120 customers carried a phantom limit consumption. 380 calls to the contact
+  centre. No financial loss. Reputational impact only.
+
+ROOT CAUSE
+  The limits service reserved the amount at validation time and released it
+  only in the success and explicit-rejection handlers. The timeout path
+  returned early without releasing.
+
+RESOLUTION
+  Reservation release moved into a finally block, and a sweeper job now
+  releases any reservation older than 10 minutes with no matching posting.
+  Released in 2.6.0.
+
+FOLLOW-UP ACTIONS
+  ACT-011  Regression case TC-FT-006 added.                              DONE
+  ACT-012  Reservation age dashboard added to the payments Grafana board. DONE
+
+
+--------------------------------------------------------------------------------
+INCIDENT: INC-20250915-02
+TITLE: OTP SMS delivery delays during a telecom outage
+SEVERITY: SEV2
+STATUS: Closed
+DETECTED: 2025-09-15 17:05 GST
+RESOLVED: 2025-09-15 21:40 GST
+DURATION: 4h 35m
+RELATED RULE: BR-005
+RELATED DEFECT: none - upstream vendor issue
+AFFECTED RELEASE: not release related
+--------------------------------------------------------------------------------
+SUMMARY
+  The primary SMS aggregator degraded and OTP delivery times rose from a p90 of
+  6 seconds to over 200 seconds. Because the OTP is valid for only 180 seconds
+  (BR-005), most codes expired before they arrived and customers received
+  TRF-4007 on entry.
+
+IMPACT
+  Approximately 8,400 transfers above AED 25,000 could not be completed.
+  Transfers below the OTP threshold were unaffected. NFR-006 breached for the
+  duration.
+
+ROOT CAUSE
+  Vendor-side routing failure at the aggregator. No defect in bank code.
+
+RESOLUTION
+  Traffic failed over to the secondary aggregator at 19:50 GST. Delivery
+  recovered within 4 minutes of the switch.
+
+FOLLOW-UP ACTIONS
+  ACT-021  Automate aggregator failover on a p90 breach over 30 seconds. DONE
+  ACT-022  Proposal to extend OTP validity to 300 seconds.               REJECTED
+           Rejected by Information Security - increases the brute force
+           window. BR-005 remains at 180 seconds.
+  ACT-023  Show a resend button after 30 seconds instead of 60.          DONE
+
+
+--------------------------------------------------------------------------------
+INCIDENT: INC-20260119-05
+TITLE: Sanction screening queue backlog holds legitimate transfers
+SEVERITY: SEV2
+STATUS: Closed
+DETECTED: 2026-01-19 10:30 GST
+RESOLVED: 2026-01-19 16:15 GST
+DURATION: 5h 45m
+RELATED RULE: BR-014
+RELATED DEFECT: none - capacity issue
+AFFECTED RELEASE: 3.0.1
+--------------------------------------------------------------------------------
+SUMMARY
+  A screening list refresh loaded a new sanctions file with a broader fuzzy
+  matching threshold. Hit volume rose from roughly 40 per day to 2,600, and
+  every affected transfer sat in PENDING_COMPLIANCE awaiting manual review by a
+  team of four analysts.
+
+IMPACT
+  2,600 transfers held, of which 2,571 were later cleared as false positives.
+  Average customer wait 4h 10m against an internal target of 30 minutes.
+
+ROOT CAUSE
+  The vendor's list update shipped with a default match threshold of 75 percent
+  instead of the bank's configured 92 percent. Configuration was not pinned and
+  was overwritten by the refresh job.
+
+RESOLUTION
+  Threshold restored to 92 percent and pinned in the deployment manifest. The
+  backlog was cleared with additional analysts from the AML team.
+
+FOLLOW-UP ACTIONS
+  ACT-031  Pin all screening configuration in version control.           DONE
+  ACT-032  Alert when the hit rate deviates more than 3x from baseline.  DONE
+  ACT-033  Fail closed on screening timeouts became formal in BR-014.    DONE
+
+
+--------------------------------------------------------------------------------
+INCIDENT: INC-20260403-11
+TITLE: Clearing file rejected on Eid holiday
+SEVERITY: SEV2
+STATUS: Closed
+DETECTED: 2026-04-03 07:10 GST
+RESOLVED: 2026-04-04 11:30 GST
+DURATION: 28h 20m
+RELATED RULE: BR-013
+RELATED DEFECT: DEF-1012
+AFFECTED RELEASE: 3.1.0
+--------------------------------------------------------------------------------
+SUMMARY
+  Domestic transfers submitted on an Eid public holiday were assigned the
+  holiday itself as the value date. The clearing scheme rejected the entire
+  outbound file, and 1,860 transfers showed as PROCESSING with no settlement.
+
+IMPACT
+  1,860 transfers delayed by one business day. AED 12.4 million in value.
+  No funds lost. 240 customer complaints.
+
+ROOT CAUSE
+  The holiday calendar table was populated for 2025 only. When the lookup
+  returned no row for the 2026 date, the code defaulted to treating the day as
+  a business day rather than raising an error. This violates BR-013 AC3.
+
+RESOLUTION
+  Holiday calendar loaded for 2026 and 2027. The lookup now raises a hard
+  failure on a missing calendar year rather than assuming a business day.
+  Full fix targeted for 3.3.0, tracked as DEF-1012.
+
+FOLLOW-UP ACTIONS
+  ACT-041  Annual calendar load added to the December release checklist. DONE
+  ACT-042  Regression case TC-FT-040 added.                              DONE
+  ACT-043  Alert 60 days before the calendar runs out.                   OPEN
+
+
+--------------------------------------------------------------------------------
+INCIDENT: INC-20260519-02
+TITLE: Customers able to exceed the daily transfer limit
+SEVERITY: SEV1
+STATUS: Closed
+DETECTED: 2026-05-19 05:30 GST (fraud monitoring)
+RESOLVED: 2026-05-20 02:00 GST
+DURATION: 20h 30m
+RELATED RULE: BR-002
+RELATED DEFECT: DEF-1007
+AFFECTED RELEASE: 3.1.0
+--------------------------------------------------------------------------------
+SUMMARY
+  The daily limit counter reset at 00:00 UTC, which is 04:00 Gulf Standard
+  Time. Customers transferring between midnight and 04:00 GST received a fresh
+  AED 100,000 allowance at 04:00 on the same calendar day, allowing up to
+  AED 200,000 in a single GST day.
+
+IMPACT
+  47 customers exceeded the daily limit. Aggregate excess AED 2.1 million.
+  Three cases were referred to the fraud team; all were later found to be
+  legitimate customer activity. Regulatory limit-control finding raised
+  internally.
+
+TIMELINE
+  05:30  Fraud monitoring flags 9 customers above AED 100,000 for the day.
+  06:15  SEV1 declared.
+  07:40  Root cause identified in the limits aggregation query.
+  09:00  Temporary mitigation - daily limits reduced to AED 60,000 bank wide.
+  22:30  Fix deployed with GST date truncation.
+  2026-05-20 02:00  Limits restored to AED 100,000. Incident closed.
+
+ROOT CAUSE
+  The aggregation query truncated the transaction timestamp using UTC while
+  every other component used GST (UTC+4). The mismatch created a four-hour
+  window in which the counter had already reset but the calendar day had not
+  changed locally.
+
+RESOLUTION
+  All limit calculations converted to Asia/Dubai. Released in 3.2.0. BR-002 was
+  amended in BRD v3.2 to state the reset time explicitly.
+
+FOLLOW-UP ACTIONS
+  ACT-051  Regression case TC-FT-031 added for the GST reset boundary.   DONE
+  ACT-052  Audit every date truncation in the payments codebase.         DONE
+  ACT-053  Add a daily reconciliation of limit consumption vs postings.  DONE
+
+
+--------------------------------------------------------------------------------
+INCIDENT: INC-20260602-08
+TITLE: Beneficiary enumeration through inconsistent error responses
+SEVERITY: SEV3
+STATUS: Open - mitigated
+DETECTED: 2026-06-02 14:20 GST (internal penetration test)
+RESOLVED: not resolved - mitigation in place
+RELATED RULE: BR-004
+RELATED DEFECT: DEF-1011
+AFFECTED RELEASE: 3.2.0
+--------------------------------------------------------------------------------
+SUMMARY
+  The penetration test team found that referencing a beneficiary belonging to
+  another customer returns HTTP 403 with a distinct body, while a non-existent
+  beneficiary returns TRF-4004. The difference allows an authenticated attacker
+  to determine which beneficiary IDs exist.
+
+IMPACT
+  No customer impact observed. No evidence of exploitation in production logs
+  over a 90-day lookback. Rated SEV3 because exploitation requires an
+  authenticated session and is heavily rate limited.
+
+ROOT CAUSE
+  The ownership check throws AccessDeniedException in a filter that runs before
+  the business validation chain, so it never reaches the uniform TRF-4004
+  handler.
+
+MITIGATION
+  Per-customer rate limit reduced from 60 to 30 requests per minute on the
+  beneficiary path. Alerting added for more than 20 failed beneficiary
+  references from one session in 5 minutes.
+
+FOLLOW-UP ACTIONS
+  ACT-061  Move the ownership check into the validation chain.           OPEN
+  ACT-062  Confirm TC-FT-012 passes after the fix.                       OPEN
+
+
+--------------------------------------------------------------------------------
+INCIDENT: INC-20260721-03
+TITLE: Elevated TRF-5002 ledger posting failures after a database failover
+SEVERITY: SEV1
+STATUS: Closed
+DETECTED: 2026-07-21 19:02 GST
+RESOLVED: 2026-07-21 20:48 GST
+DURATION: 1h 46m
+RELATED RULE: NFR-005
+RELATED DEFECT: none - infrastructure
+AFFECTED RELEASE: 3.2.0
+--------------------------------------------------------------------------------
+SUMMARY
+  An unplanned failover of the core banking database primary caused connection
+  pools in the Fund Transfer Service to hold stale connections. Roughly 34
+  percent of transfers returned TRF-5002 for 1 hour 46 minutes.
+
+IMPACT
+  Approximately 9,700 failed transfer attempts. No duplicate postings, because
+  idempotency keys (BR-011) allowed safe client retries. Availability for July
+  fell to 99.91 percent against the 99.95 percent target in NFR-003.
+
+ROOT CAUSE
+  The connection pool validation query was configured to run only on borrow
+  with a 30-minute idle check, so stale connections survived the failover.
+
+RESOLUTION
+  Pool validation switched to test-on-borrow with a 5-second timeout, and the
+  failover runbook now includes a rolling restart of the transfer service pods.
+
+FOLLOW-UP ACTIONS
+  ACT-071  Chaos test quarterly database failover in UAT.                OPEN
+  ACT-072  Add a synthetic transfer probe every 60 seconds.              DONE
+
+
+--------------------------------------------------------------------------------
+INCIDENT: INC-20260805-01
+TITLE: International transfers settled without sanction screening
+SEVERITY: SEV1
+STATUS: Open
+DETECTED: 2026-08-05 11:15 GST (compliance QA during regression cycle)
+RESOLVED: not resolved
+RELATED RULE: BR-014
+RELATED DEFECT: DEF-1017
+AFFECTED RELEASE: 3.2.0
+--------------------------------------------------------------------------------
+SUMMARY
+  Regression case TC-FT-041 revealed that international transfers below
+  AED 20,000 never reach the sanction screening service. The screening trigger
+  evaluates the amount threshold only and ignores transferType, so BR-014 AC3
+  is not enforced.
+
+IMPACT
+  Under review. A retrospective batch screening of 90 days of international
+  transfers below AED 20,000 covering 61,400 transactions produced 4 matches
+  requiring investigation. No confirmed sanctions breach at the time of
+  writing. Regulatory notification is being assessed by Compliance.
+
+ROOT CAUSE
+  ScreeningTrigger.shouldScreen() checks only amount >= SCREENING_THRESHOLD.
+  The international condition was specified in BRD v3.0 but never implemented.
+
+INTERIM CONTROL
+  A batch job screens all international transfers at 23:00 GST daily. Any hit
+  is reversed the following morning. This is a detective control, not the
+  preventive control required by BR-014.
+
+FOLLOW-UP ACTIONS
+  ACT-081  Implement the transferType condition. Target release 3.3.0.   OPEN
+  ACT-082  Confirm TC-FT-041 passes before release sign-off.             OPEN
+  ACT-083  Compliance to decide on regulatory notification by 20-Aug-26. OPEN
+
+
+================================================================================
+INCIDENT STATISTICS - ROLLING 12 MONTHS (Aug 2025 to Aug 2026)
+================================================================================
+  Total incidents logged            : 9
+  SEV1                              : 4
+  SEV2                              : 3
+  SEV3                              : 2
+  SEV4                              : 0
+  Mean time to detect (SEV1)        : 41 minutes
+  Mean time to resolve (SEV1)       : 7h 39m
+  Incidents traced to a code defect : 5
+  Incidents traced to configuration : 2
+  Incidents traced to a vendor      : 1
+  Incidents traced to infrastructure: 1
+
+  Most frequently implicated rules  : BR-002 (2), BR-014 (2), BR-003 (1),
+                                      BR-004 (1), BR-005 (1), BR-013 (1)
+
+  Open incidents at time of export  : INC-20260602-08, INC-20260805-01
+================================================================================
+END OF LOG - MOCK / TRAINING DATA
+================================================================================
