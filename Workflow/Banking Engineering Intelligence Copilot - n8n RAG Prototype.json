@@ -349,7 +349,7 @@
             {
               "id": "1214585b-cca0-4701-bf87-acd144483ece",
               "name": "text",
-              "value": "=Defect {{ $json.DefectID }} | Severity: {{ $json.Severity }} | Status: {{ $json.Status }} | {{ $json.Description }}",
+              "value": "={{ $json.text }}",
               "type": "string"
             },
             {
@@ -485,7 +485,6 @@
       "name": "Generate Ingestion Embeddings",
       "credentials": {
         "ollamaApi": {
-          "id": "9yf57SUhq1lWvyOc",
           "name": "Ollama account"
         }
       }
@@ -501,8 +500,7 @@
         -32
       ],
       "id": "bce46039-ad22-4187-8d50-a314bc2d1fbb",
-      "name": "Chat Input",
-      "webhookId": "9add0776-e3da-4572-985f-116d07b43cd2"
+      "name": "Chat Input"
     },
     {
       "parameters": {
@@ -545,7 +543,6 @@
       "name": "LLM - Qwen 3 8B",
       "credentials": {
         "ollamaApi": {
-          "id": "9yf57SUhq1lWvyOc",
           "name": "Ollama account"
         }
       }
@@ -570,7 +567,6 @@
       "name": "Index Documents in Qdrant",
       "credentials": {
         "qdrantApi": {
-          "id": "soOTvmx7FgOSmEC4",
           "name": "Qdrant account"
         }
       }
@@ -589,7 +585,6 @@
       "name": "Generate Query Embeddings",
       "credentials": {
         "ollamaApi": {
-          "id": "9yf57SUhq1lWvyOc",
           "name": "Ollama account"
         }
       }
@@ -616,7 +611,6 @@
       "name": "Banking Knowledge Retriever",
       "credentials": {
         "qdrantApi": {
-          "id": "soOTvmx7FgOSmEC4",
           "name": "Qdrant account"
         }
       }
@@ -762,7 +756,7 @@
         ]
       ]
     },
-    "Add Incident Metadata": {
+    "Add Test Case Metadata": {
       "main": [
         [
           {
@@ -773,13 +767,24 @@
         ]
       ]
     },
-    "Add API Metadata": {
+    "Add Incident Metadata": {
       "main": [
         [
           {
             "node": "Merge Knowledge Documents",
             "type": "main",
             "index": 3
+          }
+        ]
+      ]
+    },
+    "Add API Metadata": {
+      "main": [
+        [
+          {
+            "node": "Merge Knowledge Documents",
+            "type": "main",
+            "index": 4
           }
         ]
       ]
@@ -839,17 +844,6 @@
         ]
       ]
     },
-    "Add Test Case Metadata": {
-      "main": [
-        [
-          {
-            "node": "Merge Knowledge Documents",
-            "type": "main",
-            "index": 3
-          }
-        ]
-      ]
-    },
     "Conversation Memory": {
       "ai_memory": [
         [
@@ -900,12 +894,9 @@
     "executionOrder": "v1",
     "binaryMode": "separate"
   },
-  "versionId": "a929bfda-a526-4233-b0c0-4e50c8f6b8de",
   "meta": {
-    "templateCredsSetupCompleted": true,
-    "instanceId": "ed99129a4293392fbd25ce79bfbaff339bd8a1995bbfff22914e522616d690a5"
+    "templateCredsSetupCompleted": true
   },
   "nodeGroups": [],
-  "id": "spZdBqarmIQSNGBS",
   "tags": []
 }
